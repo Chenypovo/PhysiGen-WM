@@ -9,14 +9,19 @@ Unlike discrete Seq2Seq models, PhysiGen-WM models the infinitesimal phase-space
 
 ### 2. Variance-Constrained Optimization (VCO)
 To stabilize the training of Physics-Informed Neural Networks (PINNs), we introduce a **VCO Loss** term:
-$$\mathcal{L}_{VCO} = \text{Var}(\hat{z}_{t+1} - \hat{z}_t)$$
+
+$$
+\mathcal{L}_{VCO} = \text{Var}(\hat{z}_{t+1} - \hat{z}_t)
+$$
+
 By minimizing the variance of the residuals, we suppress high-frequency numerical oscillations and enforce smoother gradient flow during the discovery of Hamiltonian gradients.
 
 ### 3. Spatial-Relational Attention (4-head)
 We employ a multi-head attention mechanism with **Conflict-Resolved Gating** to model the geometric dependencies between Gaussian primitives. This prevents structural "collapse" or "fragmentation" during high-velocity transitions.
 
-## 📺 Visual Baseline
-![Trajectory Demo](docs/assets/trajectory_demo.png)
+## 📺 Demo: Latent Physics Evolution
+![PhysiGen Evolution](docs/assets/physigen_evolution.gif)
+*A preview of 3D Gaussian collectives evolving via the internal Lagrangian ODE solver (Untrained Prototype).*
 
 ## 🔮 Generative Capabilities (Text-to-3D World)
 ![Generative World Preview](docs/assets/generative_world_preview.png)
