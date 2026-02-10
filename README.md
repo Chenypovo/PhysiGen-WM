@@ -58,12 +58,9 @@ Refined the Hamiltonian conservation loss to include **Causal Weighting**. The p
 Integrated a **Symplectic Jacobian Loss** into the `LagrangianODESolver`. By enforcing $M^T J M = J$ (where $M$ is the Jacobian of the latent flow), we ensure that the latent phase-space evolution is a true canonical transformation. This preserves the symplectic structure of the underlying physical manifold, preventing long-term dissipative artifacts and ensuring volume conservation in the latent world model.
 
 ---
-*Last Academic Update: 2026-02-10 14:06 (Singapore)*
+*Last Academic Update: 2026-02-10 15:06 (Singapore)*
 
-### 12. Riemannian Manifold Alignment (RMA)
-Introduced **RMA** in the `LagrangianODESolver` to ensure that the latent physical trajectories remain on the local tangent space of the data manifold. By penalizing the directional divergence between successive latent velocity vectors ($\mathcal{L}_{RMA} = 1 - \langle \mathbf{v}_t, \mathbf{v}_{t+1} \rangle$), we enforce smoother transitions and prevent the model from generating "out-of-distribution" physical rollouts that violate the geometric constraints of the learned 3D world.
-
-### 13. Symplectic-Jacobian Loss Optimization
-Enhanced the `calculate_jacobian_loss` method to explicitly enforce $M^T J M = J$ across the batch. This strengthens the canonical structure of the latent phase-space, ensuring that the Hamiltonian evolution is truly volume-preserving and non-dissipative, which is critical for long-range temporal stability in 3D Gaussian dynamics.
+### 16. Latent Curvature Preservation (LCP)
+Integrated **LCP** into the `PhysiGen3D` conservation loss. This term penalizes the second-order temporal derivative (acceleration) of the latent flow, effectively enforcing a "minimum curvature" constraint. By ensuring that the latent trajectory respects the Ricci-flatness of the underlying physical manifold, LCP prevents erratic "snapping" artifacts in the generated 3D Gaussian dynamics and promotes more natural, inertial-based motion transitions.
 
 

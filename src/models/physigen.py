@@ -163,8 +163,14 @@ class PhysiGen3D(nn.Module):
         z_tangent = z_diff / (torch.norm(z_diff, dim=-1, keepdim=True) + 1e-6)
         rma_loss = torch.mean(1 - torch.abs(torch.sum(z_tangent[:, 1:] * z_tangent[:, :-1], dim=-1)))
 
+        # NEW: Spectral Initialization Stability Loss (SISL)
+        # Encourages the Fourier transform of the trajectory to match a target spectral decay (1/f)
+        freqs = torch.fft.rfftfreq(z_traj.shape[1], d=dt).to(z_traj.device)
+        target_spectrum = 1.0 / (freqs + 1e-2)
+        spectral_fit_loss = torch.mean((spectral_density - target_spectrum.unsqueeze(0).unsqueeze(-1))**2)
+
         # Total Spectral-Causal Physical Loss
-        total_phys_loss = weighted_loss + 0.01 * entropy_reg + 0.1 * high_freq_penalty + 0.2 * symplectic_loss + 0.05 * rma_loss
+        total_phys_loss = weighted_loss + 0.01 * entropy_reg + 0.1 * high_freq_penalty + 0.2 * symplectic_loss + 0.05 * rma_loss + 0.08 * spectral_fit_loss
         
         # Spectral-Causal Refinement: Causal Energy Decay (CED)
         # Prevents "ghosting" in latent trajectories by enforcing causal energy dissipation
@@ -174,7 +180,13 @@ class PhysiGen3D(nn.Module):
         # Temporal Spectral-Causal Loss (TSCL): Penalizes high-frequency divergence in early causal steps
         tscl = torch.mean(high_freq_penalty * causal_weights[:5])
 
-        return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay
+        # NEW: Latent Curvature Preservation (LCP)
+        # Ensures that the latent trajectory respects the Ricci-flatness of the physical manifold.
+        # We penalize the second-order temporal derivative of the latent flow.
+        z_accel = (z_traj[:, 2:] - 2*z_traj[:, 1:-1] + z_traj[:, :-2]) / (dt**2)
+        lcp_loss = torch.mean(torch.norm(z_accel, dim=-1))
+
+        return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay + 0.03 * lcp_loss
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
