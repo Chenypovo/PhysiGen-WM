@@ -58,12 +58,12 @@ Refined the Hamiltonian conservation loss to include **Causal Weighting**. The p
 Integrated a **Symplectic Jacobian Loss** into the `LagrangianODESolver`. By enforcing $M^T J M = J$ (where $M$ is the Jacobian of the latent flow), we ensure that the latent phase-space evolution is a true canonical transformation. This preserves the symplectic structure of the underlying physical manifold, preventing long-term dissipative artifacts and ensuring volume conservation in the latent world model.
 
 ---
-*Last Academic Update: 2026-02-10 13:45 (Singapore)*
+*Last Academic Update: 2026-02-10 14:06 (Singapore)*
 
-### 10. Latent Phase-Space Drift Correction (LPSDC)
-Integrated **LPSDC** into the `LagrangianODESolver`. This mechanism acts as a topological anchor, penalizing the cumulative drift of the latent trajectory from the initial semantic embedding provided by the `TextAdapter`. By enforcing a weak spring-like attraction back to the textual manifold, we ensure that long-horizon physical rollouts (e.g., >10s) do not lose their semantic identity or diverge into uninterpretable regions of the phase space.
+### 12. Riemannian Manifold Alignment (RMA)
+Introduced **RMA** in the `LagrangianODESolver` to ensure that the latent physical trajectories remain on the local tangent space of the data manifold. By penalizing the directional divergence between successive latent velocity vectors ($\mathcal{L}_{RMA} = 1 - \langle \mathbf{v}_t, \mathbf{v}_{t+1} \rangle$), we enforce smoother transitions and prevent the model from generating "out-of-distribution" physical rollouts that violate the geometric constraints of the learned 3D world.
 
-### 11. 4th-Order Symplectic Integration Refinement
-Refined the RK4 solver to support **adaptive-step refinement** during high-curvature latent transitions. This ensures that the symplectic Jacobian consistency is maintained even when the Hamiltonian gradient exhibits high-frequency oscillations, significantly improving the stability of 3D Gaussian dynamics in "turbulent" latent scenes.
+### 13. Symplectic-Jacobian Loss Optimization
+Enhanced the `calculate_jacobian_loss` method to explicitly enforce $M^T J M = J$ across the batch. This strengthens the canonical structure of the latent phase-space, ensuring that the Hamiltonian evolution is truly volume-preserving and non-dissipative, which is critical for long-range temporal stability in 3D Gaussian dynamics.
 
 

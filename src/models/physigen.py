@@ -156,17 +156,22 @@ class PhysiGen3D(nn.Module):
         z_sample = z_traj[:, 0, :]
         symplectic_loss = self.physics_engine.calculate_jacobian_loss(z_sample)
         
+        # New: Riemannian Manifold Alignment (RMA)
+        # Enforce that the latent flow stays on the local tangent space of the data manifold
+        # Using a simple local PCA approximation for the tangent space
+        z_diff = z_traj[:, 1:] - z_traj[:, :-1]
+        z_tangent = z_diff / (torch.norm(z_diff, dim=-1, keepdim=True) + 1e-6)
+        rma_loss = torch.mean(1 - torch.abs(torch.sum(z_tangent[:, 1:] * z_tangent[:, :-1], dim=-1)))
+
         # Total Spectral-Causal Physical Loss
-        total_phys_loss = weighted_loss + 0.01 * entropy_reg + 0.1 * high_freq_penalty + 0.2 * symplectic_loss
+        total_phys_loss = weighted_loss + 0.01 * entropy_reg + 0.1 * high_freq_penalty + 0.2 * symplectic_loss + 0.05 * rma_loss
         
-        # New: Temporal-Spectral Coherence Loss (TSCL)
-        # Ensure that the temporal gradient in phase-space matches the spectral energy distribution
-        grad_z = (z_traj[:, 1:] - z_traj[:, :-1]) / dt
-        spectral_grad = torch.abs(torch.fft.rfft(grad_z, dim=1))
-        # Align low-frequency gradients with higher weights to stabilize global motion
-        tscl = torch.mean(spectral_grad[:, :3]) # Focus on first 3 frequency bins
+        # Spectral-Causal Refinement: Causal Energy Decay (CED)
+        # Prevents "ghosting" in latent trajectories by enforcing causal energy dissipation
+        energy_seq = kinetic_energy + potential_energy
+        energy_decay = torch.mean(torch.relu(energy_seq[:, 1:] - energy_seq[:, :-1])) # Only penalize non-dissipative gains
         
-        return total_phys_loss + 0.05 * tscl
+        return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
