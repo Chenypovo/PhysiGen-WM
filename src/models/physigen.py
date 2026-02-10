@@ -42,13 +42,19 @@ class PhysiGen3D(nn.Module):
         self.text_adapter = TextAdapter(embed_dim=512, latent_dim=self.latent_dim)
         self.physics_engine = LagrangianODESolver(self.latent_dim)
         
-        # Upgraded: 4-head Attention with Conflict-Resolved Gating
+        # Upgraded: Dual-Path Attention for Long-Sequence Dependency
         self.spatial_attn = nn.MultiheadAttention(
             embed_dim=self.latent_dim, 
             num_heads=4, 
             batch_first=True
         )
+        self.temporal_attn = nn.MultiheadAttention(
+            embed_dim=self.latent_dim,
+            num_heads=4,
+            batch_first=True
+        )
         self.conflict_gate = nn.Parameter(torch.ones(1) * 0.1)
+        self.temporal_gate = nn.Parameter(torch.ones(1) * 0.05)
         
         self.gaussian_head = GaussianSplattingHead(self.latent_dim, num_gaussians=1024)
         self.collision_reg = CollisionRegularizer(radius=0.05)
@@ -61,8 +67,11 @@ class PhysiGen3D(nn.Module):
             if z_init.requires_grad:
                 z_init = z_init - 0.01 * torch.autograd.grad(consist_err, z_init, retain_graph=True)[0]
 
-        attn_out, _ = self.spatial_attn(z_traj, z_traj, z_traj)
-        z_refined = z_traj + torch.tanh(self.conflict_gate) * attn_out
+        # Spatial-Temporal Dual Attention
+        s_attn_out, _ = self.spatial_attn(z_traj, z_traj, z_traj)
+        t_attn_out, _ = self.temporal_attn(z_traj, z_traj, z_traj) # Could add causal mask here
+        
+        z_refined = z_traj + torch.tanh(self.conflict_gate) * s_attn_out + torch.tanh(self.temporal_gate) * t_attn_out
         
         scene_evolution = []
         for t in range(z_refined.shape[1]):
@@ -71,12 +80,19 @@ class PhysiGen3D(nn.Module):
         return torch.stack(scene_evolution, dim=1), physics_priors
 
     def calculate_conservation_loss(self, z_traj, dt=0.05):
+        # Implementation of Causal-Spectral Penalty
         velocity = (z_traj[:, 1:] - z_traj[:, :-1]) / dt
         kinetic_energy = 0.5 * torch.sum(velocity**2, dim=-1)
         potential_energy = torch.norm(z_traj[:, 1:], dim=-1)
         hamiltonian = kinetic_energy + potential_energy
         dH_dt = (hamiltonian[:, 1:] - hamiltonian[:, :-1]) / dt
-        return torch.mean(dH_dt**2)
+        
+        # Causal weighting: prioritize early time steps to stabilize the ODE
+        t_steps = z_traj.shape[1] - 1
+        causal_weights = torch.exp(-torch.linspace(0, 1, t_steps)).to(z_traj.device)
+        weighted_loss = torch.mean((dH_dt**2) * causal_weights)
+        
+        return weighted_loss
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
