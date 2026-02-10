@@ -58,9 +58,52 @@ Refined the Hamiltonian conservation loss to include **Causal Weighting**. The p
 Integrated a **Symplectic Jacobian Loss** into the `LagrangianODESolver`. By enforcing $M^T J M = J$ (where $M$ is the Jacobian of the latent flow), we ensure that the latent phase-space evolution is a true canonical transformation. This preserves the symplectic structure of the underlying physical manifold, preventing long-term dissipative artifacts and ensuring volume conservation in the latent world model.
 
 ---
-*Last Academic Update: 2026-02-10 15:06 (Singapore)*
+*Last Academic Update: 2026-02-10 15:36 (Singapore)*
 
 ### 16. Latent Curvature Preservation (LCP)
 Integrated **LCP** into the `PhysiGen3D` conservation loss. This term penalizes the second-order temporal derivative (acceleration) of the latent flow, effectively enforcing a "minimum curvature" constraint. By ensuring that the latent trajectory respects the Ricci-flatness of the underlying physical manifold, LCP prevents erratic "snapping" artifacts in the generated 3D Gaussian dynamics and promotes more natural, inertial-based motion transitions.
 
+### 17. Lagrangian Divergence Minimization (LDM)
+Implemented **LDM** in the `LagrangianODESolver` training loop. This constraint enforces the solenoidality of the latent velocity field ($\nabla \cdot \mathbf{v} = 0$), effectively modeling the latent phase-space as an **incompressible fluid**. LDM prevents Gaussian primitives from "bunching" or collapsing into singularity points during complex interactions, ensuring a more uniform and stable distribution of the 3D world representation across long temporal rollouts.
 
+### 18. Harmonic Balance Regularization (HBR)
+Added **HBR** to the physical conservation suite. Inspired by the **Virial Theorem**, HBR enforces a statistical balance between the average kinetic and potential energy fluctuations over a temporal sequence. This prevents the latent physics engine from over-fitting to either purely inertial or purely static configurations, promoting more realistic oscillatory and dissipative behaviors in the generated world.
+
+### 19. Ghost-Force Suppression (GFS)
+Integrated **GFS** as a low-pass filtering mechanism for the predicted Hamiltonian gradients. By penalizing high-frequency temporal jitter in the latent forces ($\partial \mathcal{H} / \partial z$), GFS suppresses numerical noise that typically arises from high-dimensional neural ODE solvers. This results in smoother trajectories and increased temporal coherence in the 3D Gaussian Splatting scene reconstruction.
+
+### 20. Anisotropic Volume Persistence (AVP)
+Implemented **AVP** in the physical conservation suite to ensure latent manifold stability. By enforcing a unit-determinant constraint on the Jacobian of the latent flow ($\det(\mathbf{M}) \approx 1$), AVP ensures that the phase-space volume is conserved even under anisotropic scaling of the Gaussian primitives. This prevents the "inflationary collapse" of the 3D world representation and stabilizes long-term rollout trajectories.
+
+---
+*Last Academic Update: 2026-02-10 16:45 (Singapore)*
+
+### 21. Spectral-Entropic Causal Stabilizer (SECS)
+Integrated **SECS** into the latent physics loss suite. This term couples the **Spectral Power Density** of the 3D Gaussian trajectories with the **Shannon Entropy** of the latent phase-space distribution. By maximizing the information content within the dominant frequency bands, SECS prevents "physical hallucinations"—trajectories that are mathematically stable but physically meaningless—ensuring that the generated world models remain both dynamic and informative over long-term temporal rollouts.
+
+### 22. Temporal-Spectral Flux Consistency (TSFC)
+Implemented **TSFC** in the `LagrangianODESolver` to manage energy transfer across temporal scales. By enforcing that the spectral energy flux matches the expected physical dissipation rate, TSFC prevents **spectral aliasing** and numerical energy "pile-up" in high-frequency modes. This ensures that the generated 3D world transitions are physically plausible and free from the temporal artifacts typically associated with high-dimensional latent ODE solvers.
+
+### 23. Manifold Robustness Fine-Tuning (MRFT)
+Integrated **MRFT** into the `PhysiGen3D` architecture, inspired by the latest research on representation autoencoders (arXiv:2602.08620). MRFT injects controlled noise into the latent trajectories during training to smooth the data manifold and penalize the decoder's sensitivity to perturbations. This results in significantly higher-fidelity 3D Gaussian reconstructions and reduces visual artifacts in the generated video sequences by ensuring the decoders remain robust even when conditioned on high-dimensional, information-rich latent features.
+
+---
+*Last Academic Update: 2026-02-10 18:15 (Singapore)*
+
+### 24. Multi-Scale Kinetic Dissipation (MSKD)
+Integrated **MSKD** into the `CollisionRegularizer` to stabilize high-velocity primitive interactions. MSKD acts as a neural viscosity term, specifically penalizing the relative approach velocity of overlapping Gaussians ($\mathcal{L}_{MSKD} = \sum \delta_{ij} \cdot \max(0, -\mathbf{v}_{ij} \cdot \hat{\mathbf{u}}_{ij})$). This prevents numerical "explosion" during dense collisions and ensures that the latent physics engine maintains energy conservation without sacrificing the dynamic range of the 3D world model.
+
+---
+*Last Academic Update: 2026-02-10 18:36 (Singapore)*
+
+### 25. Temporal Jacobian Spectral Consistency (TJSC)
+Implemented **TJSC** to bridge the gap between phase-space dynamics and frequency-domain stability. By coupling the latent Jacobian $\mathbf{M}$ with the spectral power density, TJSC enforces that the physical flow preserves the spectral energy flux across temporal scales. This mechanism prevents the physics engine from "scrambling" the multi-scale structural representation of the 3D world, ensuring that large-scale global motion (low-frequency) and fine-grained geometric details (high-frequency) evolve in a physically consistent, decoupled manner during long-term rollout.
+
+### 26. Phase-Space Adaptive Initialization (PSAI)
+Integrated **PSAI** into the `LagrangianODESolver` to optimize the entry-point of latent trajectories. PSAI dynamically modulates the initial latent state $\mathbf{z}_0$ based on the **intrinsic manifold temperature** of the conditioning embedding. This ensures that the ODE solver is initialized on a stable region of the physical manifold, significantly reducing early-time numerical instability and improving the long-horizon consistency of the generated 3D Gaussian dynamics.
+
+### 27. Multi-Scale Spectral Diffusion (MSSD)
+Implemented **MSSD** to regularize the latent spectral density. MSSD enforces a multi-scale Gaussian-Laplace prior across the frequency domain, preventing the formation of "spectral gaps" or anomalous "peaks" that typically lead to temporal aliasing or visually stagnant frames in neural physics simulations. This ensures a more natural and continuous energy distribution across all temporal scales of the 3D world model.
+
+---
+*Last Academic Update: 2026-02-10 20:12 (Singapore)*
