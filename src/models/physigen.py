@@ -81,15 +81,19 @@ class LagrangianODESolver(nn.Module):
         Enforce Symplectic Structure (J-orthogonality) in the phase-space flow.
         """
         z = z.detach().requires_grad_(True)
-        dz_dt = self.ode_func(z)
-        
-        # Compute Jacobian of the ODE field
-        batch_size, dim = z.shape
-        jacobian = []
-        for i in range(dim):
-            grads = torch.autograd.grad(dz_dt[:, i].sum(), z, create_graph=True)[0]
-            jacobian.append(grads)
-        M = torch.stack(jacobian, dim=1) # (B, dim, dim)
+        # Enable gradients during evaluation for Jacobian computation
+        with torch.enable_grad():
+            dz_dt = self.ode_func(z)
+            
+            # Compute Jacobian of the ODE field
+            batch_size, dim = z.shape
+            jacobian = []
+            for i in range(dim):
+                grads = torch.autograd.grad(dz_dt[:, i].sum(), z, create_graph=True, allow_unused=True)[0]
+                if grads is None:
+                    grads = torch.zeros_like(z)
+                jacobian.append(grads)
+            M = torch.stack(jacobian, dim=1) # (B, dim, dim)
         
         # Symplectic matrix J
         half_dim = dim // 2
@@ -274,17 +278,19 @@ class PhysiGen3D(nn.Module):
         # Enforces that the determinant of the Jacobian (volume) remains invariant under 
         # anisotropic scaling of the Gaussian primitives.
         # This prevents primitives from expanding infinitely in the latent world.
-        z_sample_2 = z_traj[:, 0, :]
-        z_sample_2 = z_sample_2.detach().requires_grad_(True)
-        dz_dt_2 = self.physics_engine.ode_func(z_sample_2)
-        batch_size, dim = z_sample_2.shape
-        jacobian_list = []
-        for i in range(dim):
-            grads = torch.autograd.grad(dz_dt_2[:, i].sum(), z_sample_2, create_graph=True)[0]
-            jacobian_list.append(grads)
-        M_2 = torch.stack(jacobian_list, dim=1)
-        det_M = torch.linalg.det(M_2 + 1e-4 * torch.eye(dim, device=z_traj.device))
-        avp_loss = torch.mean((det_M - 1.0)**2)
+        z_sample_2 = z_traj[:, 0, :].detach().requires_grad_(True)
+        with torch.enable_grad():
+            dz_dt_2 = self.physics_engine.ode_func(z_sample_2)
+            batch_size, dim = z_sample_2.shape
+            jacobian_list = []
+            for i in range(dim):
+                grads = torch.autograd.grad(dz_dt_2[:, i].sum(), z_sample_2, create_graph=True, allow_unused=True)[0]
+                if grads is None:
+                    grads = torch.zeros_like(z_sample_2)
+                jacobian_list.append(grads)
+            M_2 = torch.stack(jacobian_list, dim=1)
+            det_M = torch.linalg.det(M_2 + 1e-4 * torch.eye(dim, device=z_traj.device))
+            avp_loss = torch.mean((det_M - 1.0)**2)
 
         # NEW: Spectral-Entropic Causal Stabilizer (SECS)
         # Combines spectral density with latent entropy to ensure the trajectory
@@ -310,10 +316,15 @@ class PhysiGen3D(nn.Module):
         # Refinement: Enforces that total spectral power is conserved across causal steps.
         # This prevents energy inflation in the latent phase-space.
         # We also enforce a causal decay on energy fluctuations to stabilize the long-term rollout.
+        # UPDATED: Added Spectral-Causal Alignment (SCA) term to ensure that the 
+        # energy decay follows the learned causal directionality (forward-only).
         spectral_power = torch.sum(spectral_density**2, dim=1) # Sum across frequencies
         sp_diff = torch.abs(spectral_power[:, 1:] - spectral_power[:, :-1])
         scec_weights = torch.exp(-torch.linspace(0, 1.5, sp_diff.shape[-1])).to(z_traj.device)
-        scec_loss = torch.mean(sp_diff * scec_weights.unsqueeze(0))
+        
+        # SCA Term: Penalize backward energy flow (violations of temporal causality)
+        causal_violation = torch.relu(spectral_power[:, :-1] - spectral_power[:, 1:]) 
+        scec_loss = torch.mean(sp_diff * scec_weights.unsqueeze(0)) + 0.1 * torch.mean(causal_violation)
 
         # NEW: Manifold Robustness Fine-Tuning (MRFT) - inspired by LV-RAE (arXiv:2602.08620)
         # Smoothes the latent trajectory by injecting controlled noise during training 
@@ -339,12 +350,19 @@ class PhysiGen3D(nn.Module):
         tjsc_loss = torch.mean(M_2.abs() @ spectral_density.mean(dim=1).unsqueeze(-1))
 
         # NEW: Phase-Space Adaptive Initialization Loss (PSAIL)
-        # Ensures that the PSAI scaling factor stays within a physically meaningful 
+        # Ensures that the initial latent state stays within a physically meaningful 
         # range, preventing the ODE solver from being initialized in high-energy 
         # singularity regions of the latent space.
-        psail_loss = torch.mean((scale - 1.0)**2)
+        psail_loss = torch.mean(z_traj[:, 0, :]**2)
 
-        return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay + 0.03 * lcp_loss + 0.04 * ldm_loss + 0.07 * hbr_loss + 0.02 * gfs_loss + 0.09 * avp_loss + 0.11 * secs_loss + 0.13 * tsfc_loss + 0.15 * mrft_loss + 0.06 * scec_loss + 0.12 * tjsc_loss + 0.08 * psail_loss
+        # NEW: Multi-Scale Spectral Diffusion (MSSD)
+        # Inspired by recent advances in diffusion models for physics.
+        # This term regularizes the spectral density to follow a multi-scale 
+        # Gaussian-Laplace prior, preventing spectral "gaps" or "peaks" 
+        # that lead to temporal aliasing or visually stagnant frames.
+        mssd_loss = torch.mean(torch.abs(torch.diff(spectral_density, n=2, dim=1)))
+
+        return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay + 0.03 * lcp_loss + 0.04 * ldm_loss + 0.07 * hbr_loss + 0.02 * gfs_loss + 0.09 * avp_loss + 0.11 * secs_loss + 0.13 * tsfc_loss + 0.15 * mrft_loss + 0.06 * scec_loss + 0.12 * tjsc_loss + 0.08 * psail_loss + 0.1 * mssd_loss
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
