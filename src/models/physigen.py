@@ -171,6 +171,9 @@ class PhysiGen3D(nn.Module):
         energy_seq = kinetic_energy + potential_energy
         energy_decay = torch.mean(torch.relu(energy_seq[:, 1:] - energy_seq[:, :-1])) # Only penalize non-dissipative gains
         
+        # Temporal Spectral-Causal Loss (TSCL): Penalizes high-frequency divergence in early causal steps
+        tscl = torch.mean(high_freq_penalty * causal_weights[:5])
+
         return total_phys_loss + 0.05 * tscl + 0.1 * energy_decay
 
     def calculate_vco_loss(self, z_traj):
