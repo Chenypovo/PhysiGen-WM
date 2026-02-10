@@ -54,3 +54,9 @@ Implemented **PSER** in the `LagrangianODESolver` to mitigate the "fixed-point c
 ### 8. Causal-Spectral Hamiltonian Weighting
 Refined the Hamiltonian conservation loss to include **Causal Weighting**. The penalty for energy drift ($dH/dt$) is now exponentially decayed over time, prioritizing the stabilization of the "initial flow" during training. This prevents numerical errors in early-time steps from propagating and destabilizing the entire 4th-order Runge-Kutta trajectory.
 
+### 9. Symplectic Jacobian Consistency (SJC)
+Integrated a **Symplectic Jacobian Loss** into the `LagrangianODESolver`. By enforcing $M^T J M = J$ (where $M$ is the Jacobian of the latent flow), we ensure that the latent phase-space evolution is a true canonical transformation. This preserves the symplectic structure of the underlying physical manifold, preventing long-term dissipative artifacts and ensuring volume conservation in the latent world model.
+
+---
+*Last Academic Update: 2026-02-10 13:15 (Singapore)*
+

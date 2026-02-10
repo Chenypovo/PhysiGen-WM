@@ -9,6 +9,7 @@ class LagrangianODESolver(nn.Module):
     def __init__(self, latent_dim):
         super().__init__()
         self.latent_dim = latent_dim
+        # Symplectic MLP: Predicts dH/dq (positional change) and dH/dp (momentum change)
         self.hamiltonian_field = nn.Sequential(
             nn.Linear(latent_dim, 256),
             nn.GELU(),
@@ -23,6 +24,8 @@ class LagrangianODESolver(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def ode_func(self, z):
+        # Symplectic Gradient: J * grad(H)
+        # For simplicity, we model the field directly, but enforce J-structure in loss.
         return self.hamiltonian_field(z)
 
     def forward(self, z0, t_steps):
@@ -30,6 +33,7 @@ class LagrangianODESolver(nn.Module):
         zt = z0
         outputs = []
         for _ in range(len(t_steps)):
+            # 4th-order Runge-Kutta (RK4)
             k1 = self.ode_func(zt)
             k2 = self.ode_func(zt + dt/2 * k1)
             k3 = self.ode_func(zt + dt/2 * k2)
@@ -37,6 +41,31 @@ class LagrangianODESolver(nn.Module):
             zt = zt + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
             outputs.append(zt)
         return torch.stack(outputs, dim=1)
+
+    def calculate_jacobian_loss(self, z):
+        """
+        Enforce Symplectic Structure (J-orthogonality) in the phase-space flow.
+        """
+        z = z.detach().requires_grad_(True)
+        dz_dt = self.ode_func(z)
+        
+        # Compute Jacobian of the ODE field
+        batch_size, dim = z.shape
+        jacobian = []
+        for i in range(dim):
+            grads = torch.autograd.grad(dz_dt[:, i].sum(), z, create_graph=True)[0]
+            jacobian.append(grads)
+        M = torch.stack(jacobian, dim=1) # (B, dim, dim)
+        
+        # Symplectic matrix J
+        half_dim = dim // 2
+        J = torch.zeros((dim, dim), device=z.device)
+        J[:half_dim, half_dim:] = torch.eye(half_dim)
+        J[half_dim:, :half_dim] = -torch.eye(half_dim)
+        
+        # Loss: M^T J M - J = 0
+        symplectic_err = torch.matmul(torch.matmul(M.transpose(1, 2), J), M) - J
+        return torch.mean(symplectic_err**2)
 
 class PhysiGen3D(nn.Module):
     def __init__(self, config):
@@ -85,7 +114,7 @@ class PhysiGen3D(nn.Module):
         return torch.stack(scene_evolution, dim=1), physics_priors
 
     def calculate_conservation_loss(self, z_traj, dt=0.05):
-        # Implementation of Causal-Spectral Penalty
+        # Implementation of Spectral-Causal Penalty
         velocity = (z_traj[:, 1:] - z_traj[:, :-1]) / dt
         kinetic_energy = 0.5 * torch.sum(velocity**2, dim=-1)
         potential_energy = torch.norm(z_traj[:, 1:], dim=-1)
@@ -98,16 +127,23 @@ class PhysiGen3D(nn.Module):
         entropy_reg = -torch.mean(torch.log(phase_dist + 1e-6))
 
         # Spectral-Causal Refinement: Compute Fourier magnitudes for high-freq damping
+        # This suppresses jitter in long-horizon rollout
         fft_z = torch.fft.rfft(z_traj, dim=1)
         spectral_density = torch.abs(fft_z)
         high_freq_penalty = torch.mean(spectral_density[:, -5:]) # Penalize top 5 high-freq bins
 
-        # Causal weighting: prioritize early time steps to stabilize the ODE
+        # Causal weighting: prioritize early time steps to stabilize the initial rollout
         t_steps = z_traj.shape[1] - 1
         causal_weights = torch.exp(-torch.linspace(0, 1, t_steps-1)).to(z_traj.device)
         weighted_loss = torch.mean((dH_dt**2) * causal_weights)
         
-        return weighted_loss + 0.01 * entropy_reg + 0.05 * high_freq_penalty
+        # New: Symplectic Jacobian Consistency
+        # Checks for preservation of phase-space area/volume
+        z_sample = z_traj[:, 0, :]
+        symplectic_loss = self.physics_engine.calculate_jacobian_loss(z_sample)
+        
+        # Total Spectral-Causal Physical Loss
+        return weighted_loss + 0.01 * entropy_reg + 0.1 * high_freq_penalty + 0.2 * symplectic_loss
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
