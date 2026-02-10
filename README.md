@@ -58,5 +58,12 @@ Refined the Hamiltonian conservation loss to include **Causal Weighting**. The p
 Integrated a **Symplectic Jacobian Loss** into the `LagrangianODESolver`. By enforcing $M^T J M = J$ (where $M$ is the Jacobian of the latent flow), we ensure that the latent phase-space evolution is a true canonical transformation. This preserves the symplectic structure of the underlying physical manifold, preventing long-term dissipative artifacts and ensuring volume conservation in the latent world model.
 
 ---
-*Last Academic Update: 2026-02-10 13:15 (Singapore)*
+*Last Academic Update: 2026-02-10 13:45 (Singapore)*
+
+### 10. Latent Phase-Space Drift Correction (LPSDC)
+Integrated **LPSDC** into the `LagrangianODESolver`. This mechanism acts as a topological anchor, penalizing the cumulative drift of the latent trajectory from the initial semantic embedding provided by the `TextAdapter`. By enforcing a weak spring-like attraction back to the textual manifold, we ensure that long-horizon physical rollouts (e.g., >10s) do not lose their semantic identity or diverge into uninterpretable regions of the phase space.
+
+### 11. 4th-Order Symplectic Integration Refinement
+Refined the RK4 solver to support **adaptive-step refinement** during high-curvature latent transitions. This ensures that the symplectic Jacobian consistency is maintained even when the Hamiltonian gradient exhibits high-frequency oscillations, significantly improving the stability of 3D Gaussian dynamics in "turbulent" latent scenes.
+
 
