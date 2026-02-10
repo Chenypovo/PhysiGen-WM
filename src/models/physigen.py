@@ -16,6 +16,11 @@ class LagrangianODESolver(nn.Module):
             nn.GELU(),
             nn.Linear(256, latent_dim)
         )
+        # Spectral Initialization: Xavier-normalized for harmonic stability
+        for m in self.hamiltonian_field:
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=1e-2)
+                nn.init.constant_(m.bias, 0)
 
     def ode_func(self, z):
         return self.hamiltonian_field(z)
@@ -87,12 +92,22 @@ class PhysiGen3D(nn.Module):
         hamiltonian = kinetic_energy + potential_energy
         dH_dt = (hamiltonian[:, 1:] - hamiltonian[:, :-1]) / dt
         
+        # New: Phase-Space Entropy Regularization
+        # Prevents the latent trajectory from collapsing into a single fixed point
+        phase_dist = torch.cdist(z_traj, z_traj)
+        entropy_reg = -torch.mean(torch.log(phase_dist + 1e-6))
+
+        # Spectral-Causal Refinement: Compute Fourier magnitudes for high-freq damping
+        fft_z = torch.fft.rfft(z_traj, dim=1)
+        spectral_density = torch.abs(fft_z)
+        high_freq_penalty = torch.mean(spectral_density[:, -5:]) # Penalize top 5 high-freq bins
+
         # Causal weighting: prioritize early time steps to stabilize the ODE
         t_steps = z_traj.shape[1] - 1
-        causal_weights = torch.exp(-torch.linspace(0, 1, t_steps)).to(z_traj.device)
+        causal_weights = torch.exp(-torch.linspace(0, 1, t_steps-1)).to(z_traj.device)
         weighted_loss = torch.mean((dH_dt**2) * causal_weights)
         
-        return weighted_loss
+        return weighted_loss + 0.01 * entropy_reg + 0.05 * high_freq_penalty
 
     def calculate_vco_loss(self, z_traj):
         residuals = z_traj[:, 1:] - z_traj[:, :-1]
